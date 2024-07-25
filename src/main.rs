@@ -1,4 +1,5 @@
 use clap::Parser;
+use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use std::str::Split;
@@ -13,6 +14,14 @@ struct Args {
     //Output size in MB
     #[clap(short, long, default_value = "500")]
     size: u32,
+
+    //Bake subtitles 1 = yes, 0 = no
+    #[clap(short, long, default_value = "1")]
+    bake: u32,
+
+    //Verbose output 1 = yes, 0 = no
+    #[clap(short, long, default_value = "0")]
+    verbose: u32,
 
     //Leeway in the output size in MB
     #[clap(short, long, default_value = "50")]
@@ -54,29 +63,56 @@ fn main() {
     let leewayed_size = (args.size - args.leeway) as f32 * 8000000.0;
 
     let bitrate = probed.next().unwrap();
-    let calculated_bitrate = leewayed_size / duration;
+    let calculated_bitrate = (leewayed_size / duration).to_string();
+    let str_bitrate = calculated_bitrate.as_str();
 
     println!(
         "Original Bitrate = {}, Calculated Bitrate = {}, Duration = {}, Size = {}, Output = {}",
         bitrate,
-        calculated_bitrate,
+        str_bitrate,
         duration,
         args.size,
         args.output.to_str().unwrap()
     );
+    let mut sub_args = vec!["-i", &args.input.as_os_str().to_str().unwrap(), "lmao.ass"];
 
+    if &args.verbose.clone().to_string() == "0" {
+        sub_args.append(&mut vec!["-v", "quiet", "-stats"]);
+    };
+
+    let subtitle = Command::new("ffmpeg")
+        .args(sub_args)
+        .spawn()
+        .expect("Failed to create subtitles");
+
+    println!("{:?}", subtitle.wait_with_output());
+
+    let encode_args = vec![
+        "-i",
+        &args.input.as_os_str().to_str().unwrap(),
+        "-vf",
+        "ass=lmao.ass",
+        "-b:v",
+        str_bitrate,
+        &args.output.as_os_str().to_str().unwrap(),
+    ];
+
+    let verbose = vec!["-v", "quiet", "-stats"];
+
+    let mut encode_args_verbose: Vec<&str> = vec![];
+
+    if &args.verbose.clone().to_string() == "0" {
+        encode_args_verbose.extend(verbose.iter().cloned());
+        encode_args_verbose.extend(encode_args.iter().cloned());
+    } else {
+        encode_args_verbose.extend(encode_args.iter().cloned());
+    };
     //Run ffmpeg with the calculated bitrate
     let ffmpeg = Command::new("ffmpeg")
-        .arg("-v")
-        .arg("quiet")
-        .arg("-stats")
-        .arg("-i")
-        .arg(&args.input)
-        .arg("-b")
-        .arg(calculated_bitrate.to_string())
-        .arg(&args.output)
+        .args(encode_args_verbose)
         .spawn()
         .expect("Failed to execute ffmpeg");
 
-    println!("{:?}", ffmpeg.wait_with_output())
+    println!("{:?}", ffmpeg.wait_with_output());
+    fs::remove_file("lmao.ass").unwrap();
 }

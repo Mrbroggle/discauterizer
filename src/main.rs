@@ -7,23 +7,19 @@ use std::str::Split;
 #[command(version, about, long_about = None)]
 struct Args {
     //Path to the input file
-    #[clap(short, long)]
+    #[clap(short, long, value_name = "FILE")]
     input: PathBuf,
 
     //Output size in MB
     #[clap(short, long, default_value = "500")]
     size: u32,
 
-    //Leeway enabled
-    #[clap(short, long)]
-    leeway_enabled: bool,
-
     //Leeway in the output size in MB
-    #[clap(short, long, default_value = "10")]
+    #[clap(short, long, default_value = "50")]
     leeway: u32,
 
     //Path to the output file
-    #[clap(short, long, default_value = "output.mp4")]
+    #[clap(short, long, default_value = "output.mp4", value_name = "FILE")]
     output: PathBuf,
 }
 
@@ -55,11 +51,7 @@ fn main() {
         .parse::<f32>()
         .expect("Failed to parse duration");
 
-    let leewayed_size = if args.leeway_enabled {
-        (args.size - args.leeway) as f32 * 8000000.0
-    } else {
-        args.size as f32 * 800000.0
-    };
+    let leewayed_size = (args.size - args.leeway) as f32 * 8000000.0;
 
     let bitrate = probed.next().unwrap();
     let calculated_bitrate = leewayed_size / duration;
@@ -75,6 +67,9 @@ fn main() {
 
     //Run ffmpeg with the calculated bitrate
     let ffmpeg = Command::new("ffmpeg")
+        .arg("-v")
+        .arg("quiet")
+        .arg("-stats")
         .arg("-i")
         .arg(&args.input)
         .arg("-b")
@@ -83,5 +78,5 @@ fn main() {
         .spawn()
         .expect("Failed to execute ffmpeg");
 
-    println!("{:?}", ffmpeg);
+    println!("{:?}", ffmpeg.wait_with_output())
 }
